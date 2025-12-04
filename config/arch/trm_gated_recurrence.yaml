@@ -1,0 +1,33 @@
+# Experiment 3: TRM with Recurrence Gating Only (Outer Loop Only)
+name: recursive_reasoning.trm_gated_recurrence@TRMGatedRecurrence
+
+loss:
+  name: losses@ACTLossHead
+  loss_type: stablemax_cross_entropy
+
+halt_exploration_prob: 0.1
+halt_max_steps: 16
+
+H_cycles: 3
+L_cycles: 6
+
+H_layers: 0
+L_layers: 2
+
+hidden_size: 512
+num_heads: 8
+expansion: 4
+
+puzzle_emb_ndim: ${.hidden_size}
+
+pos_encodings: rope
+forward_dtype: bfloat16
+
+mlp_t: False
+puzzle_emb_len: 16
+no_ACT_continue: True
+
+# ==================== NEW PARAMETERS ====================
+# GRU-style recurrence gating (outer loop)
+recurrence_gate_use_reset: False  # False: simple update gate, True: full GRU with reset gate
+# ========================================================
