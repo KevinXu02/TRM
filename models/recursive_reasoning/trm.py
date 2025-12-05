@@ -157,7 +157,6 @@ class TinyRecursiveReasoningModel_ACTV1_Inner(nn.Module):
                 num_heads=self.config.num_heads,
                 head_dim=self.config.hidden_size // self.config.num_heads
             )
-            self.history_norm = nn.RMSNorm(self.config.hidden_size, eps=self.config.rms_norm_eps)
         # Initial states
         self.H_init = nn.Buffer(trunc_normal_init_(torch.empty(self.config.hidden_size, dtype=self.forward_dtype), std=1), persistent=True)
         self.L_init = nn.Buffer(trunc_normal_init_(torch.empty(self.config.hidden_size, dtype=self.forward_dtype), std=1), persistent=True)
