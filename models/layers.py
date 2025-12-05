@@ -167,3 +167,34 @@ def rms_norm(hidden_states: torch.Tensor, variance_epsilon: float) -> torch.Tens
     variance = hidden_states.square().mean(-1, keepdim=True)
     hidden_states = hidden_states * torch.rsqrt(variance + variance_epsilon)
     return hidden_states.to(input_dtype)
+
+class CrossAttention(nn.Module):
+    def __init__(self, hidden_size, num_heads, head_dim):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.num_heads = num_heads
+        self.head_dim = head_dim
+        self.output_size = num_heads * head_dim
+
+        self.q_proj = CastedLinear(hidden_size, self.output_size, bias=False)
+
+        self.k_proj = CastedLinear(hidden_size, self.output_size, bias=False)
+        self.v_proj = CastedLinear(hidden_size, self.output_size, bias=False)
+        self.o_proj = CastedLinear(self.output_size, hidden_size, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor, history_states: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len, _ = hidden_states.shape
+        
+        query = self.q_proj(hidden_states)
+        key = self.k_proj(history_states)
+        value = self.v_proj(history_states)
+
+        query = query.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
+
+        attn_output = F.scaled_dot_product_attention(query, key, value)
+        
+        attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.output_size)
+        
+        return self.o_proj(attn_output)
