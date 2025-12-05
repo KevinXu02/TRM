@@ -8,7 +8,7 @@ from torch import nn
 from pydantic import BaseModel
 import random
 from models.common import trunc_normal_init_
-from models.layers import rms_norm, LinearSwish, SwiGLU, Attention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear
+from models.layers import rms_norm, LinearSwish, SwiGLU, Attention, RotaryEmbedding, CosSin, CastedEmbedding, CastedLinear, CrossAttention
 from models.sparse_embedding import CastedSparseEmbedding
 
 IGNORE_LABEL_ID = -100
@@ -17,6 +17,7 @@ IGNORE_LABEL_ID = -100
 class TinyRecursiveReasoningModel_ACTV1InnerCarry:
     z_H: torch.Tensor
     z_L: torch.Tensor
+    history: Optional[torch.Tensor] = None
 
 
 @dataclass
@@ -47,6 +48,7 @@ class TinyRecursiveReasoningModel_ACTV1Config(BaseModel):
     expansion: float
     num_heads: int
     pos_encodings: str
+    use_historical_attention: bool = False
 
     rms_norm_eps: float = 1e-5
     rope_theta: float = 10000.0
@@ -149,6 +151,13 @@ class TinyRecursiveReasoningModel_ACTV1_Inner(nn.Module):
         # Reasoning Layers
         self.L_level = TinyRecursiveReasoningModel_ACTV1ReasoningModule(layers=[TinyRecursiveReasoningModel_ACTV1Block(self.config) for _i in range(self.config.L_layers)])
 
+        if self.config.use_historical_attention:
+            self.history_attn = CrossAttention(
+                hidden_size=self.config.hidden_size,
+                num_heads=self.config.num_heads,
+                head_dim=self.config.hidden_size // self.config.num_heads
+            )
+            self.history_norm = nn.RMSNorm(self.config.hidden_size, eps=self.config.rms_norm_eps)
         # Initial states
         self.H_init = nn.Buffer(trunc_normal_init_(torch.empty(self.config.hidden_size, dtype=self.forward_dtype), std=1), persistent=True)
         self.L_init = nn.Buffer(trunc_normal_init_(torch.empty(self.config.hidden_size, dtype=self.forward_dtype), std=1), persistent=True)
@@ -185,13 +194,20 @@ class TinyRecursiveReasoningModel_ACTV1_Inner(nn.Module):
         return TinyRecursiveReasoningModel_ACTV1InnerCarry(
             z_H=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype),
             z_L=torch.empty(batch_size, self.config.seq_len + self.puzzle_emb_len, self.config.hidden_size, dtype=self.forward_dtype),
+
+            history=torch.empty(batch_size, 0, self.config.hidden_size, dtype=self.forward_dtype) if self.config.use_historical_attention else None
         )
         
     def reset_carry(self, reset_flag: torch.Tensor, carry: TinyRecursiveReasoningModel_ACTV1InnerCarry):
-        return TinyRecursiveReasoningModel_ACTV1InnerCarry(
-            z_H=torch.where(reset_flag.view(-1, 1, 1), self.H_init, carry.z_H),
-            z_L=torch.where(reset_flag.view(-1, 1, 1), self.L_init, carry.z_L),
-        )
+        new_z_H = torch.where(reset_flag.view(-1, 1, 1), self.H_init, carry.z_H)
+        new_z_L = torch.where(reset_flag.view(-1, 1, 1), self.L_init, carry.z_L)
+        
+        new_history = carry.history
+        if self.config.use_historical_attention and carry.history is not None:
+             mask = (~reset_flag).view(-1, 1, 1).to(carry.history.dtype)
+             new_history = carry.history * mask
+
+        return TinyRecursiveReasoningModel_ACTV1InnerCarry(z_H=new_z_H, z_L=new_z_L, history=new_history)
 
     def forward(self, carry: TinyRecursiveReasoningModel_ACTV1InnerCarry, batch: Dict[str, torch.Tensor]) -> Tuple[TinyRecursiveReasoningModel_ACTV1InnerCarry, torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         seq_info = dict(
@@ -201,26 +217,64 @@ class TinyRecursiveReasoningModel_ACTV1_Inner(nn.Module):
         # Input encoding
         input_embeddings = self._input_embeddings(batch["inputs"], batch["puzzle_identifiers"])
 
-        # Forward iterations
-        it = 0
         z_H, z_L = carry.z_H, carry.z_L
-        # H_cycles-1 without grad
-        with torch.no_grad():
-            for _H_step in range(self.config.H_cycles-1):
+        
+        # Access history from carry 
+        # Default to None if not present to maintain backward compatibility during transition
+        history = getattr(carry, "history", None)
+        use_history = getattr(self.config, "use_historical_attention", False)
+
+        # Forward iterations
+        # We refactor the two loops (no_grad vs grad) into one loop with a conditional context
+        # This ensures history is updated consistently across all steps.
+        
+        total_cycles = self.config.H_cycles
+        
+        for cycle in range(total_cycles):
+            # The last cycle requires gradients; earlier cycles do not.
+            is_grad_step = (cycle == total_cycles - 1)
+            context = torch.enable_grad() if is_grad_step else torch.no_grad()
+            
+            with context:
+                # 1. Historical Attention Mechanism
+                # Retrieve insights from earlier recursion steps 
+                if use_history and history is not None and history.numel() > 0:
+                    # Apply cross attention: Query=z_H, Key/Value=history
+                    attn_out = self.history_attn(hidden_states=z_H, history_states=history)
+                    # Residual + Norm (using functional rms_norm as seen in blocks)
+                    z_H = rms_norm(z_H + attn_out, variance_epsilon=self.config.rms_norm_eps)
+
+                # 2. Update History
+                # Store the state before it is modified by the L-loop
+                if use_history:
+                    # Append current z_H to history. 
+                    # z_H shape: [B, Seq, Dim] -> history shape: [B, Total_Seq, Dim]
+                    # We treat the entire past sequence as memory.
+                    current_history = z_H
+                    if history is None:
+                         history = current_history
+                    else:
+                         history = torch.cat([history, current_history], dim=1)
+
+                # 3. Standard Recursion (L-Loop)
                 for _L_step in range(self.config.L_cycles):
                     z_L = self.L_level(z_L, z_H + input_embeddings, **seq_info)
+                
+                # Update H state
                 z_H = self.L_level(z_H, z_L, **seq_info)
-        # 1 with grad
-        for _L_step in range(self.config.L_cycles):
-            z_L = self.L_level(z_L, z_H + input_embeddings, **seq_info)
-        z_H = self.L_level(z_H, z_L, **seq_info)
 
         # LM Outputs
-        new_carry = TinyRecursiveReasoningModel_ACTV1InnerCarry(z_H=z_H.detach(), z_L=z_L.detach())  # New carry no grad
+        # Save the new history into the carry for the next ACT step
+        new_carry = TinyRecursiveReasoningModel_ACTV1InnerCarry(
+            z_H=z_H.detach(), 
+            z_L=z_L.detach(),
+            history=history.detach() if history is not None else None
+        ) 
+        
         output = self.lm_head(z_H)[:, self.puzzle_emb_len:]
         q_logits = self.q_head(z_H[:, 0]).to(torch.float32) # Q-head; uses the first puzzle_emb position
+        
         return new_carry, output, (q_logits[..., 0], q_logits[..., 1])
-
 
 class TinyRecursiveReasoningModel_ACTV1(nn.Module):
     """ACT wrapper."""
