@@ -29,5 +29,5 @@ no_ACT_continue: True
 
 # ==================== NEW PARAMETERS ====================
 # Qwen3-style attention gating (inner loop)
-attention_gate_mode: elementwise  # Options: 'headwise', 'elementwise', 'none'
+attention_gate_mode: headwise  # Options: 'headwise', 'elementwise', 'none'
 # ========================================================

@@ -49,7 +49,7 @@ python pretrain.py \
 # Experiment 4: Hybrid
 echo "==================== Starting Exp 4: Hybrid Gates ===================="
 python pretrain.py \
-  arch=trm_hybrid_gated \
+  arch=trm_gated_hybird \
   data_paths="[${DATA}]" \
   evaluators="[]" \
   epochs=${EPOCHS} eval_interval=${EVAL_INTERVAL} \
