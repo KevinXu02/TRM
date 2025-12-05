@@ -1,5 +1,5 @@
 # Experiment 4: TRM with Hybrid Gating (Both Inner and Outer Loops)
-name: recursive_reasoning.trm_hybrid_gated@TRMHybridGated
+name: recursive_reasoning.trm_gated_hybrid@TRMHybridGated
 
 loss:
   name: losses@ACTLossHead
@@ -29,7 +29,7 @@ no_ACT_continue: True
 
 # ==================== NEW PARAMETERS ====================
 # Inner loop: Qwen3-style attention gating
-attention_gate_mode: headwise  # Options: 'headwise', 'elementwise', 'none'
+attention_gate_mode: elementwise  # Options: 'headwise', 'elementwise', 'none'
 
 # Outer loop: GRU-style recurrence gating
 recurrence_gate_use_reset: False  # False: simple, True: full GRU
