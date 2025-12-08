@@ -1,16 +1,14 @@
-# Less is More: Recursive Reasoning with Tiny Networks
+# GTRM: Gated Recursive Reasoning with Tiny Networks
 
-This is the codebase for the paper: "Less is More: Recursive Reasoning with Tiny Networks". TRM is a recursive reasoning approach that achieves amazing scores of 45% on ARC-AGI-1 and 8% on ARC-AGI-2 using a tiny 7M parameters neural network.
-
-[Paper](https://arxiv.org/abs/2510.04871)
+This is the codebase for the project: "GTRM: Gated Recursive Reasoning with Tiny Networks". GTRM is a recursive reasoning approach with gating that outperforms the original TRM baseline on Sudoku dataset, using a tiny 7M parameters neural network.
 
 ### Motivation
 
-Tiny Recursion Model (TRM) is a recursive reasoning model that achieves amazing scores of 45% on ARC-AGI-1 and 8% on ARC-AGI-2 with a tiny 7M parameters neural network. The idea that one must rely on massive foundational models trained for millions of dollars by some big corporation in order to achieve success on hard tasks is a trap. Currently, there is too much focus on exploiting LLMs rather than devising and expanding new lines of direction. With recursive reasoning, it turns out that “less is more”: you don’t always need to crank up model size in order for a model to reason and solve hard problems. A tiny model pretrained from scratch, recursing on itself and updating its answers over time, can achieve a lot without breaking the bank.
+Recent advancements in Large Language Models, particularly the NeurIPS Best Paper [Gated Attention for Large Language Models](https://arxiv.org/pdf/2505.06708) (Qwen Team, 2025), have demonstrated the efficacy of gating mechanisms in regulating information flow and enhancing model expressivity. Drawing inspiration from this, we identify a potential limitation in standard TRM pipelines: the lack of explicit control over internal state updates often leads to the accumulation of redundant or noisy information.
 
-This work came to be after I learned about the recent innovative Hierarchical Reasoning Model (HRM). I was amazed that an approach using small models could do so well on hard tasks like the ARC-AGI competition (reaching 40% accuracy when normally only Large Language Models could compete). But I kept thinking that it is too complicated, relying too much on biological arguments about the human brain, and that this recursive reasoning process could be greatly simplified and improved. Tiny Recursion Model (TRM) simplifies recursive reasoning to its core essence, which ultimately has nothing to do with the human brain, does not require any mathematical (fixed-point) theorem, nor any hierarchy.
+To address this, we hypothesize that integrating a gating mechanism into the TRM pipeline can dynamically control the update process, thereby refining the representation learning. We explore this hypothesis by introducing three distinct gating strategies: Gated Context Injection, Gated Attention, and Gated Recurrence. Through comprehensive ablation studies, we systematically evaluate the impact of each gate on the model's performance, aiming to isolate the most effective mechanism for controlled state updating
 
-### How TRM works
+### How GTRM works
 
 <p align="center">
   <img src="https://AlexiaJM.github.io/assets/images/TRM_fig.png" alt="TRM"  style="width: 30%;">
