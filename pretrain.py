@@ -123,10 +123,8 @@ def create_dataloader(
     dataloader = DataLoader(
         dataset,
         batch_size=None,
-        num_workers=1,
-        prefetch_factor=8,
+        num_workers=0,  
         pin_memory=True,
-        persistent_workers=True,
     )
     return dataloader, dataset.metadata
 

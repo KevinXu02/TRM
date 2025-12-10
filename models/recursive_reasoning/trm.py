@@ -110,11 +110,15 @@ class TinyRecursiveReasoningModel_ACTV1ReasoningModule(nn.Module):
         self.injection_gates = nn.Parameter(torch.ones(num_cycles + 1)*2.0)
         self._iteration_idx = 0
 
-    def forward(self, hidden_states: torch.Tensor, input_injection: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, input_injection: torch.Tensor, residual_state: Optional[torch.Tensor] = None, **kwargs) -> torch.Tensor:      
         gate_value = torch.sigmoid(self.injection_gates[self._iteration_idx])
         self._iteration_idx = (self._iteration_idx + 1) % len(self.injection_gates)
         
         hidden_states = hidden_states + gate_value * input_injection
+        
+        if residual_state is not None:
+            hidden_states = hidden_states + residual_state
+            
         for layer in self.layers:
             hidden_states = layer(hidden_states=hidden_states, **kwargs)
         return hidden_states
@@ -220,12 +224,12 @@ class TinyRecursiveReasoningModel_ACTV1_Inner(nn.Module):
             for _H_step in range(self.config.H_cycles-1):
                 self.L_level.reset_iteration_counter()  
                 for _L_step in range(self.config.L_cycles):
-                    z_L = self.L_level(z_L, z_H + input_embeddings, **seq_info)
+                    z_L = self.L_level(z_L, input_injection=input_embeddings, residual_state=z_H, **seq_info)
                 z_H = self.L_level(z_H, z_L, **seq_info)
         # 1 with grad
         self.L_level.reset_iteration_counter() 
         for _L_step in range(self.config.L_cycles):
-            z_L = self.L_level(z_L, z_H + input_embeddings, **seq_info)
+            z_L = self.L_level(z_L, input_injection=input_embeddings, residual_state=z_H, **seq_info)
         z_H = self.L_level(z_H, z_L, **seq_info)
 
         new_carry = TinyRecursiveReasoningModel_ACTV1InnerCarry(z_H=z_H.detach(), z_L=z_L.detach())  # New carry no grad
