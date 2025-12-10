@@ -11,22 +11,31 @@ To address this, we hypothesize that integrating a gating mechanism into the TRM
 ### How GTRM works
 
 <p align="center">
-  <img src="https://github.com/KevinXu02/TRM/tree/main/assets/GTRM.png" alt="GTRM"  style="width: 60%;">
+  <img src="https://raw.githubusercontent.com/KevinXu02/TRM/main/assets/GTRM.png" alt="GTRM"  style="width: 60%;">
 </p>
 
 We implemented three gating mechanisms to control the recursive update:
 
 **1. Gated Context Injection (Input Stage)**
 Controls the injection of static input context ($x$) into the latent state.
-$$h^{(t)} = z^{(t-1)} + \sigma(g^{(t)}) \cdot x$$
+
+$$
+h^{(t)} = z^{(t-1)} + \sigma(g^{(t)}) \cdot x
+$$
 
 **2. Gated Attention (Intermediate Stage)**
 Modulates the features outputted by the attention mechanism.
-$$\tilde{z}^{(t)} = \text{Attn}(h^{(t)}) \odot \sigma(g^{(t)})$$
+
+$$
+\tilde{z}^{(t)} = \text{Attn}(h^{(t)}) \odot \sigma(g^{(t)})
+$$
 
 **3. Gated Recurrent Update (Output Stage)**
-Controls the trade-off between retaining old memory and accepting new updates (similar to GRU).
-$$z^{(t)} = (1 - \sigma(g^{(t)})) \odot z^{(t-1)} + \sigma(g^{(t)}) \odot \tilde{z}^{(t)}$$
+Controls the trade-off between retaining old memory and accepting new updates (similar to GRU).    
+
+$$
+z^{(t)} = (1 - \sigma(g^{(t)})) \odot z^{(t-1)} + \sigma(g^{(t)}) \odot \tilde{z}^{(t)}
+$$
 
 > **Notation:**
 > * $z^{(t)}$: Latent state at step $t$
@@ -53,22 +62,6 @@ wandb login YOUR-LOGIN # login if you want the logger to sync results to your We
 ### Dataset Preparation
 
 ```bash
-# ARC-AGI-1
-python -m dataset.build_arc_dataset \
-  --input-file-prefix kaggle/combined/arc-agi \
-  --output-dir data/arc1concept-aug-1000 \
-  --subsets training evaluation concept \
-  --test-set-name evaluation
-
-# ARC-AGI-2
-python -m dataset.build_arc_dataset \
-  --input-file-prefix kaggle/combined/arc-agi \
-  --output-dir data/arc2concept-aug-1000 \
-  --subsets training2 evaluation2 concept \
-  --test-set-name evaluation2
-
-## Note: You cannot train on both ARC-AGI-1 and ARC-AGI-2 and evaluate them both because ARC-AGI-2 training data contains some ARC-AGI-1 eval data
-
 # Sudoku-Extreme
 python dataset/build_sudoku_dataset.py --output-dir data/sudoku-extreme-1k-aug-1000  --subsample-size 1000 --num-aug 1000  # 1000 examples, 1000 augments
 
