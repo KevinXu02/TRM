@@ -11,14 +11,33 @@ To address this, we hypothesize that integrating a gating mechanism into the TRM
 ### How GTRM works
 
 <p align="center">
-  <img src="https://AlexiaJM.github.io/assets/images/TRM_fig.png" alt="TRM"  style="width: 30%;">
+  <img src="https://github.com/KevinXu02/TRM/tree/main/assets/GTRM.png" alt="GTRM"  style="width: 60%;">
 </p>
 
-Tiny Recursion Model (TRM) recursively improves its predicted answer y with a tiny network. It starts with the embedded input question x and initial embedded answer y and latent z. For up to K improvements steps, it tries to improve its answer y. It does so by i) recursively updating n times its latent z given the question x, current answer y, and current latent z (recursive reasoning), and then ii) updating its answer y given the current answer y and current latent z. This recursive process allows the model to progressively improve its answer (potentially addressing any errors from its previous answer) in an extremely parameter-efficient manner while minimizing overfitting.
+We implemented three gating mechanisms to control the recursive update:
+
+**1. Gated Context Injection (Input Stage)**
+Controls the injection of static input context ($x$) into the latent state.
+$$h^{(t)} = z^{(t-1)} + \sigma(g^{(t)}) \cdot x$$
+
+**2. Gated Attention (Intermediate Stage)**
+Modulates the features outputted by the attention mechanism.
+$$\tilde{z}^{(t)} = \text{Attn}(h^{(t)}) \odot \sigma(g^{(t)})$$
+
+**3. Gated Recurrent Update (Output Stage)**
+Controls the trade-off between retaining old memory and accepting new updates (similar to GRU).
+$$z^{(t)} = (1 - \sigma(g^{(t)})) \odot z^{(t-1)} + \sigma(g^{(t)}) \odot \tilde{z}^{(t)}$$
+
+> **Notation:**
+> * $z^{(t)}$: Latent state at step $t$
+> * $h^{(t)}$: Input to attention
+> * $g^{(t)}$: Gate score
+> * $\sigma$: Sigmoid activation
+> * $\odot$: Element-wise multiplication
 
 ### Requirements
 
-Installation should take a few minutes. For the smallest experiments on Sudoku-Extreme (pretrain_mlp_t_sudoku), you need 1 GPU with enough memory. With 1 L40S (48Gb Ram), it takes around 18h to finish. In case that you run into issues due to library versions, here is the requirements with the exact versions used: [specific_requirements.txt](https://github.com/SamsungSAILMontreal/TinyRecursiveModels/blob/main/specific_requirements.txt).
+Installation should take a few minutes. For the smallest experiments on Sudoku-Extreme, you need 1 GPU with enough memory. With 5090, it takes around 7h to finish. Since different devices you have, install [requirements.txt](https://github.com/KevinXu02/TRM/blob/new/requirements.txt) is enough to prepare the env (Linux recommend).
 
 - Python 3.10 (or similar)
 - Cuda 12.6.0 (or similar)
@@ -59,104 +78,13 @@ python dataset/build_maze_dataset.py # 1000 examples, 8 augments
 
 ## Experiments
 
-### Sudoku-Extreme (assuming 1 L40S GPU):
+### Sudoku-Extreme:
 
 ```bash
-run_name="pretrain_mlp_t_sudoku"
-python pretrain.py \
-arch=trm \
-data_paths="[data/sudoku-extreme-1k-aug-1000]" \
-evaluators="[]" \
-epochs=50000 eval_interval=5000 \
-lr=1e-4 puzzle_emb_lr=1e-4 weight_decay=1.0 puzzle_emb_weight_decay=1.0 \
-arch.mlp_t=True arch.pos_encodings=none \
-arch.L_layers=2 \
-arch.H_cycles=3 arch.L_cycles=6 \
-+run_name=${run_name} ema=True
-
-Expected: Around 87% exact-accuracy (+- 2%)
-
-run_name="pretrain_att_sudoku"
-python pretrain.py \
-arch=trm \
-data_paths="[data/sudoku-extreme-1k-aug-1000]" \
-evaluators="[]" \
-epochs=50000 eval_interval=5000 \
-lr=1e-4 puzzle_emb_lr=1e-4 weight_decay=1.0 puzzle_emb_weight_decay=1.0 \
-arch.L_layers=2 \
-arch.H_cycles=3 arch.L_cycles=6 \
-+run_name=${run_name} ema=True
+python pretrain.py arch=trm data_paths="[data/sudoku-extreme-1k-aug-1000]" evaluators="[]" epochs=50000 eval_interval=5000 lr=1e-4 puzzle_emb_lr=1e-4 weight_decay=1.0 puzzle_emb_weight_decay=1.0 global_batch_size=768 +run_name=exp5_gated_input ema=True
 ```
 
-Expected: Around 75% exact-accuracy (+- 2%)
-
-*Runtime:* < 20 hours
-
-### Maze-Hard (assuming 4 L40S GPUs):
-
-```bash
-run_name="pretrain_att_maze30x30"
-torchrun --nproc-per-node 4 --rdzv_backend=c10d --rdzv_endpoint=localhost:0 --nnodes=1 pretrain.py \
-arch=trm \
-data_paths="[data/maze-30x30-hard-1k]" \
-evaluators="[]" \
-epochs=50000 eval_interval=5000 \
-lr=1e-4 puzzle_emb_lr=1e-4 weight_decay=1.0 puzzle_emb_weight_decay=1.0 \
-arch.L_layers=2 \
-arch.H_cycles=3 arch.L_cycles=4 \
-+run_name=${run_name} ema=True
-```
-
-*Runtime:* < 24 hours
-
-Actually, you can run Maze-Hard with 1 L40S GPU by reducing the batch-size with no noticable loss in performance:
-
-```bash
-run_name="pretrain_att_maze30x30_1gpu"
-python pretrain.py \
-arch=trm \
-data_paths="[data/maze-30x30-hard-1k]" \
-evaluators="[]" \
-epochs=50000 eval_interval=5000 \
-lr=1e-4 puzzle_emb_lr=1e-4 weight_decay=1.0 puzzle_emb_weight_decay=1.0 global_batch_size=128 \
-arch.L_layers=2 \
-arch.H_cycles=3 arch.L_cycles=4 \
-+run_name=${run_name} ema=True
-```
-
-*Runtime:* < 24 hours
-
-
-### ARC-AGI-1 (assuming 4 H-100 GPUs):
-
-```bash
-run_name="pretrain_att_arc1concept_4"
-torchrun --nproc-per-node 4 --rdzv_backend=c10d --rdzv_endpoint=localhost:0 --nnodes=1 pretrain.py \
-arch=trm \
-data_paths="[data/arc1concept-aug-1000]" \
-arch.L_layers=2 \
-arch.H_cycles=3 arch.L_cycles=4 \
-+run_name=${run_name} ema=True
-
-```
-
-*Runtime:* ~3 days
-
-### ARC-AGI-2 (assuming 4 H-100 GPUs):
-
-```bash
-run_name="pretrain_att_arc2concept_4"
-torchrun --nproc-per-node 4 --rdzv_backend=c10d --rdzv_endpoint=localhost:0 --nnodes=1 pretrain.py \
-arch=trm \
-data_paths="[data/arc2concept-aug-1000]" \
-arch.L_layers=2 \
-arch.H_cycles=3 arch.L_cycles=4 \
-+run_name=${run_name} ema=True
-
-```
-
-*Runtime:* ~3 days
-
+*Runtime:* < 8 hours
 
 ## Reference
 
@@ -188,4 +116,4 @@ and the Hierarchical Reasoning Model (HRM):
 }
 ```
 
-This code is based on the Hierarchical Reasoning Model [code](https://github.com/sapientinc/HRM) and the Hierarchical Reasoning Model Analysis [code](https://github.com/arcprize/hierarchical-reasoning-model-analysis).
+This code is based on the TRM [code](https://github.com/SamsungSAILMontreal/TinyRecursiveModels).
