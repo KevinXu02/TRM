@@ -11,7 +11,7 @@ To address this, we hypothesize that integrating a gating mechanism into the TRM
 ### How GTRM works
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/KevinXu02/TRM/main/assets/GTRM.png" alt="GTRM"  style="width: 60%;">
+  <img src="https://raw.githubusercontent.com/KevinXu02/TRM/main/assets/GTRM_new.png" alt="GTRM"  style="width: 60%;">
 </p>
 
 We implemented three gating mechanisms to control the recursive update:
